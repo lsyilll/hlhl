@@ -1,83 +1,79 @@
 import json
-
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 from langchain_experimental.agents.agent_toolkits import create_pandas_dataframe_agent
 
-PROMPT_TEMPLATE = """你是一位数据分析助手，你的回应内容取决于用户的请求内容，请按照下面的步骤处理用户请求：
+# ---------------------------
+# 自定义提示模板（支持多种图表类型）
+# ---------------------------
+PROMPT_TEMPLATE = """
+你是一位专业的数据分析助手，用户将提供一个数据集，你的任务是根据用户的问题生成对应的分析结果。
+请严格按照以下格式返回结果（确保JSON格式正确，不包含任何多余文本）：
 
-1. 思考阶段 (Thought) ：先分析用户请求类型（文字回答/表格/图表），并验证数据类型是否匹配。
-2. 行动阶段 (Action) ：根据分析结果选择以下严格对应的格式。
-   - 纯文字回答: 
-     {"answer": "不超过50个字符的明确答案"}
-     
-   - 表格数据：  
-     {"table":{"columns":["列名1", "列名2", ...], "data":[["第一行值1", "值2", ...], ["第二行值1", "值2", ...]]}}
-     
-   - 柱状图 
-     {"bar":{"columns": ["A", "B", "C", ...], "data":[35, 42, 29, ...]}}
-     
-   - 折线图 
-     {"line":{"columns": ["A", "B", "C", ...], "data": [35, 42, 29, ...]}}
-     
-3. 格式校验要求
-   - 字符串值必须使用英文双引号
-   - 数值类型不得添加引号
-   - 确保数组闭合无遗漏
-   
-   错误案例：{'columns':['Product', 'Sales'], data:[[A001, 200]]}  
-   正确案例：{"columns":["product", "sales"], "data":[["A001", 200]]}
-     
-注意：响应数据的"output"中不要有换行符、制表符以及其他格式符号。
+- 纯文字回答：
+  {{"answer": "简明答案（不超过50字）"}}
 
-当前用户请求："""
+- 表格数据：
+  {{"table": {{"columns": ["列名1", "列名2"], "data": [["值1", 100], ["值2", 200]]}}}}
 
-# PROMPT_TEMPLATE = """
-# 你是一位数据分析助手，你的回应内容取决于用户的请求内容。
-#
-# 1. 对于文字回答的问题，按照这样的格式回答：
-#    {"answer": "<你的答案写在这里>"}
-# 例如：
-#    {"answer": "订单量最高的产品ID是'MNWC3-067'"}
-#
-# 2. 如果用户需要一个表格，按照这样的格式回答：
-#    {"table": {"columns": ["column1", "column2", ...], "data": [[value1, value2, ...], [value1, value2, ...], ...]}}
-#
-# 3. 如果用户的请求适合返回条形图，按照这样的格式回答：
-#    {"bar": {"columns": ["A", "B", "C", ...], "data": [34, 21, 91, ...]}}
-#
-# 4. 如果用户的请求适合返回折线图，按照这样的格式回答：
-#    {"line": {"columns": ["A", "B", "C", ...], "data": [34, 21, 91, ...]}}
-#
-# 5. 如果用户的请求适合返回散点图，按照这样的格式回答：
-#    {"scatter": {"columns": ["A", "B", "C", ...], "data": [34, 21, 91, ...]}}
-# 注意：我们只支持三种类型的图表："bar", "line" 和 "scatter"。
-#
-#
-# 请将所有输出作为JSON字符串返回。请注意要将"columns"列表和数据列表中的所有字符串都用双引号包围。
-# 例如：{"columns": ["Products", "Orders"], "data": [["32085Lip", 245], ["76439Eye", 178]]}
-#
-# 你要处理的用户请求如下： {input}
-# """
+- 柱状图数据：
+  {{"bar": {{"columns": ["类别A", "类别B"], "data": [35, 42]}}}}
+
+- 折线图数据：
+  {{"line": {{"columns": ["月份1", "月份2"], "data": [89, 120]}}}}
+
+- 散点图数据：
+  {{"scatter": {{"columns": ["X轴标签", "Y轴标签"], "data": [23, 45, 67]}}}}
+
+- 面积图数据：
+  {{"area": {{"columns": ["季度1", "季度2"], "data": [150, 200]}}}}
+
+- 饼图数据：
+  {{"pie": {{"columns": ["产品A", "产品B"], "data": [60, 40]}}}}
+
+注意：
+1. 所有字符串使用英文双引号
+2. 数值类型不得加引号
+3. 确保数组闭合完整
+4. 只返回JSON，不包含其他内容
+5. 饼图的"data"应为数值列表，对应各部分的占比数值
+
+用户问题：{{input}}
+"""
 
 
 def dataframe_agent(df, query):
+    """创建数据分析智能体（支持多图表类型）"""
+    # 加载环境变量（建议将API Key存入.env文件）
     load_dotenv()
+
+    # 初始化模型（可替换为OpenAI/GPT-4或其他LLM）
     model = ChatOpenAI(
-        model="deepseek-chat",
-        base_url='https://api.deepseek.com',
-        api_key='sk-8dca673d82b74bf59bac651337b7fba8',
-        temperature=0
+        model="gpt-4o-mini",  # 使用GPT-4o-mini获取更准确的图表推荐
+        api_key="your-openai-api-key",  # 请替换为实际API Key
+        base_url="https://twapi.openai-hk.com/v1",
+        temperature=0.1,  # 低温度确保输出格式稳定
+        max_tokens=1024
     )
+
+    # 创建Pandas数据代理
     agent = create_pandas_dataframe_agent(
         llm=model,
         df=df,
-        agent_executor_kwargs={"handle_parsing_errors": True},
-        max_iterations=10,
-        early_stopping_method='generate',
-        allow_dangerous_code=True,
-        verbose=True
+        agent="pandas-v2",  # 使用最新的Pandas代理版本
+        handle_parsing_errors=True,
+        max_iterations=5,  # 限制最大思考次数避免超时
+        early_stopping_method="generate",
+        verbose=False  # 关闭代理调试日志
     )
-    prompt = PROMPT_TEMPLATE + query
-    response = agent.invoke({"input": prompt})
-    return json.loads(response["output"])
+
+    # 生成带用户查询的完整提示
+    prompt = PROMPT_TEMPLATE.replace("{{input}}", query)
+
+    try:
+        # 调用代理并解析结果
+        response = agent.run(prompt)
+        return json.loads(response)  # 解析JSON结果
+
+    except Exception as e:
+        raise ValueError(f"数据分析失败：{str(e)}")
