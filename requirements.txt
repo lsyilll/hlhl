@@ -64,3 +64,7 @@ tzdata==2025.2
 urllib3==2.4.0
 watchdog==6.0.0
 zstandard==0.23.0
+
+matplotlib~=3.10.3
+python-dotenv~=1.1.0
+langchain-experimental~=0.3.4
